@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <script src="https://aframe.io/releases/1.0.4/aframe.min.js"></script>
+        <script type="text/javascript">
+            AFRAME.registerComponent('drag-rotation',{
+              schema : { speed : {default:1}},
+              init : function(){
+                this.mouseDown = false;
+                this.x = 0;
+                this.y = 0;
+                document.addEventListener('mousedown',this.OnDocumentMouseDown.bind(this));
+                document.addEventListener('mouseup',this.OnDocumentMouseUp.bind(this));
+                document.addEventListener('mousemove',this.OnDocumentMouseMove.bind(this));
+              },
+              OnDocumentMouseDown : function(event){
+                this.mouseDown = true;
+                this.x = event.clientX;
+                this.y = event.clientY;
+              },
+              OnDocumentMouseUp : function(){
+                this.mouseDown = false;
+              },
+              OnDocumentMouseMove : function(event)
+              {
+                if(this.mouseDown)
+                {
+                  var xDif = event.clientX - this.x;
+                  var yDif = event.clientY - this.y;
+
+                  var rot = this.el.getAttribute('rotation');
+                  rot.x += yDif * this.data.speed;
+                  rot.y += xDif * this.data.speed;
+                  this.el.setAttribute('rotation', rot);
+
+                  this.x = event.clientX;
+                  this.y = event.clientY;
+                }
+              }
+            });
+          </script>
+    </head>
+    <body>
+        <a-scene light="defaultLightsEnabled: false" vr-mode-ui="enabled: false">
+            <a-sky color="#1A1A26"></a-sky>
+            <a-entity camera light="color: #D0D0B0" position="0 0 10"></a-entity>
+            <a-entity id="model" rotation="20 0 0" drag-rotation material="side: double"></a-entity>
+        </a-scene>
+    </body>
+</html>

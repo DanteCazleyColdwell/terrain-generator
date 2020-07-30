@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Terrain Generator</title>
+        <style>
+            :root {
+                --text-color: #CFCBC5;
+                --background-color: #1A1A26;
+                --input-background-color: #181A1B;
+                --border-color: #736B5E;
+            }
+            body {
+                color: var(--text-color);
+                background-color: var(--background-color);
+                font-family: Verdana, Geneva, Tahoma, sans-serif;
+            }
+            label {
+                display: inline-block;
+                width: 13em;
+                text-align: right;
+            }
+            text {
+                display: inline-block;
+            }
+            input {
+                color: var(--text-color);
+                background-color: var(--input-background-color);
+                border-color: var(--border-color);
+            }
+            button {
+                color: var(--text-color);
+                background-color: var(--input-background-color);
+                border-color: var(--border-color);
+            }
+        </style>
+    </head>
+    <body>
+        <div>
+            <label>Width</label>
+            <input id="width" type="number" min="1" step="1" value="10">
+            <text>Decimal number, minimum 1</text>
+        </div>
+        <div>
+            <label>Depth</label>
+            <input id="depth" type="number" min="1" step="1" value="10">
+            <text>Decimal number, minimum 1</text>
+        </div>
+        <div>
+            <label>Vertex Resolution</label>
+            <input id="vertexResolution" type="number" min="1" step="1" value="5">
+            <text>Whole number, minimum 1</text>
+        </div>
+        <br>
+        <div>
+            <label>Minimum Random Value</label>
+            <input id="minimum" type="number" value="-0.5">
+            <text>Decimal number</text>
+        </div>
+        <div>
+            <label>Maximum Random Value</label>
+            <input id="maximum" type="number" value="0.5">
+            <text>Decimal number</text>
+        </div>
+        <div>
+            <label>Floor</label>
+            <input id="floor" type="number" value="">
+            <text>Decimal number, empty to disable</text>
+        </div>
+        <div>
+            <label>Ceiling</label>
+            <input id="ceiling" type="number" value="">
+            <text>Decimal number, empty to disable</text>
+        </div>
+        <br>
+        <div>
+            <label>Seed</label>
+            <input id="seed" type="text" value="">
+            <text>Anything, empty for random</text>
+        </div>
+        <div>
+            <label>File Name</label>
+            <input id="fileName" type="text" value="Terrain">
+            <text>Anything, no file extension</text>
+        </div>
+        <br>
+        <div>
+            <label></label>
+            <button style="width: 12.7em;" onclick="main()">Generate</button>
+            <button id="download" style="width: 12.7em;" disabled onclick="download()">Download</button>
+        </div>
+        <br>
+        <iframe id="renderer" src="./renderer.html" width="600" height="300"></iframe>
+        <a id="link" href=""></a>
+    </body>
+    <script>
+        const widthElement = document.getElementById('width');
+        const depthElement = document.getElementById('depth');
+        const vertexResolutionElement = document.getElementById('vertexResolution');
+        const minimumElement = document.getElementById('minimum');
+        const maximumElement = document.getElementById('maximum');
+        const floorElement = document.getElementById('floor');
+        const ceilingElement = document.getElementById('ceiling');
+        const seedElement = document.getElementById('seed');
+        const fileNameElement = document.getElementById('fileName');
+        const rendererElement = document.getElementById('renderer');
+        const linkElement = document.getElementById('link');
+        const downloadElement = document.getElementById('download');
+
+        let vertexResolution;
+        let width;
+        let depth;
+        let minimum;
+        let difference;
+        let floor;
+        let ceiling;
+
+        let values;
+
+        function randomNumberGenerator() 
+        {
+            this.m = 0x80000000;
+            this.a = 1103515245;
+            this.c = 12345;
+
+            this.state = Math.floor(Math.random() * (this.m - 1));
+
+            this.setSeed = function(seed)
+            {
+                let s = 0;
+                for (let i = 0; i < seed.length; i++) { s += seed.charCodeAt(i); }
+                this.state = s;
+            }
+
+            this.getInt = function()
+            {
+                this.state = (this.a * this.state + this.c) % this.m;
+                return this.state;
+            }
+
+            this.getFloat = function()
+            {
+                return this.getInt() / (this.m - 1);
+            }
+        }
+        let rng = new randomNumberGenerator();
+
+        function download()
+        {
+            linkElement.download = (fileNameElement.value == "" ? "terrain" : fileNameElement.value) + ".obj";
+            linkElement.dataset.downloadurl = [".obj", linkElement.download, linkElement.href].join(':');
+            linkElement.click();
+        }
+
+        function updateModel(data)
+        {
+            if (linkElement.href != "") URL.revokeObjectURL(linkElement.href);
+
+            let blob = new Blob([data], {type:String})
+            linkElement.href = URL.createObjectURL(blob);
+
+            const scaleMod = 1 / vertexResolution;
+            rendererElement.contentDocument.getElementById('model').setAttribute('obj-model', `obj: ${linkElement.href}`);
+            rendererElement.contentDocument.getElementById('model').setAttribute('scale', `${scaleMod} ${scaleMod} ${scaleMod}`);
+        
+            downloadElement.disabled = false;
+        }
+
+        function generateObj()
+        {
+            let vs = [];
+            let vts = [];
+            let fs = [];
+            let vns = [];
+            for (let i = 0; i < values.length; i++) vns.push({x: 0, y: 0, z: 0});
+
+            const xMod = (width - 1) / 2, zMod = (depth - 1) / 2;
+
+            //#region Vertices & Vertex Textures Coordinates
+            let i = 0;
+            for (let z = 0; z < depth; z++)
+            {
+                for (let x = 0; x < width; x++)
+                {
+                    let y = values[i];
+                    if (y < floor && floor != "") y = floor;
+                    if (y > ceiling && ceiling != "") y = ceiling;
+                    
+                    vs.push({x: x - xMod, y: y, z: z - zMod});
+                    vts.push({x: x / (width - 1), y: z / (depth - 1)});
+                    
+                    i++;
+                }
+            }
+            //#endregion
+
+            //#region Faces
+            i = 1;
+            for (let z = 0; z < depth - 1; z++)
+            {
+                for (let x = 0; x < width - 1; x++)
+                {
+                    let iw = i + width, io = i + 1, iwo = i + width + 1;
+                    
+                    fs.push({x: i, y: iw, z: io});
+
+                    const vu1 = {x: vs[iw].x - vs[i].x, y: vs[iw].y - vs[i].y, z: vs[iw].z - vs[i].z};
+                    const vv1 = {x: vs[io].x - vs[i].x, y: vs[io].y - vs[i].y, z: vs[io].z - vs[i].z};
+                    const n1 = {x: (vu1.y * vv1.z) - (vu1.z * vv1.y), y: (vu1.z * vv1.x) - (vu1.x * vv1.z), z: (vu1.x * vv1.y) - (vu1.y * vv1.x)};
+                    n1;
+
+                    fs.push({x: iw, y: iwo, z: io});
+                    i++; 
+                }
+                i++;
+            }
+            //#endregion
+
+            //#region Vertex Normals            
+            fs.forEach(f => {
+                const p1 = vs[f.x - 1], p2 = vs[f.y - 1], p3 = vs[f.z - 1];
+
+                const u = {x: p2.x - p1.x, y: p2.y - p1.y, z: p2.z - p1.z};
+                const v = {x: p3.x - p1.x, y: p3.y - p1.y, z: p3.z - p1.z};
+                const n = {x: (u.y * v.z) - (u.z * v.y), y: (u.z * v.x) - (u.x * v.z),z: (u.x * v.y) - (u.y * v.x)};
+
+                const vn1 = vns[f.x - 1], vn2 = vns[f.y - 1], vn3 = vns[f.z - 1];
+
+                vns[f.x - 1] = {x: vn1.x + n.x, y: vn1.y + n.y, z: vn1.z + n.z};
+                vns[f.y - 1] = {x: vn2.x + n.x, y: vn2.y + n.y, z: vn2.z + n.z};
+                vns[f.z - 1] = {x: vn3.x + n.x, y: vn3.y + n.y, z: vn3.z + n.z};
+            });
+
+            vns.forEach(vn => {
+                const m = Math.sqrt((vn.x * vn.x) + (vn.y * vn.y) + (vn.z * vn.z));
+                vn = {x: vn.x / m, y: vn.y / m, z: vn.z / m}
+            });
+            //#endregion
+
+            let output = "";
+            vs.forEach(v => { output += `v ${v.x} ${v.y} ${v.z}\n`; });
+            vts.forEach(vt => { output += `vt ${vt.x} ${vt.y}\n`; });
+            vns.forEach(vn => { output += `vn ${vn.x} ${vn.y} ${vn.z}\n`; });
+            fs.forEach(f => { output += `f ${f.x}/${f.x}/${f.x} ${f.y}/${f.y}/${f.y} ${f.z}/${f.z}/${f.z}\n` });
+
+            updateModel(output);
+        }
+
+        function generateValues()
+        {
+            vertexResolution = vertexResolutionElement.value * 1;
+            width = (widthElement.value * 1 + 1) * vertexResolution;
+            depth = (depthElement.value * 1 + 1) * vertexResolution;
+            minimum = minimumElement.value * 1;
+            difference = maximumElement.value - minimum;
+            floor = floorElement.value * 1;
+            ceiling = ceilingElement.value * 1;
+            seed = seedElement.value;
+
+            if (seed != "") rng.setSeed(seed);
+
+            values = [];
+
+            let i = 0;
+            for (let z = 0; z < depth; z++)
+            {
+                for (let x = 0; x < width; x++)
+                {
+                    const r = rng.getFloat() * difference + minimum;
+
+                    if (i === 0)        values.push(r);
+                    else if (x === 0)   values.push(values[i - width] + r);
+                    else if (z === 0)   values.push(values[i - 1] + r);
+                    else                values.push((values[i - width] + values[i - 1]) / 2.0 + r);
+
+                    i++
+                }
+            }
+        }
+
+        function main()
+        {
+            generateValues();
+            generateObj();
+        }
+    </script>
+</html>
